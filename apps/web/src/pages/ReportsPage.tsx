@@ -1,0 +1,176 @@
+import type { ReportSummaryView } from '@poi/shared';
+import { useQuery } from '@tanstack/react-query';
+import {
+  ArrowRight,
+  CalendarClock,
+  Download,
+  FileJson,
+  FileText,
+  FolderKanban,
+  LockKeyhole,
+  Printer,
+} from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ToneBadge } from '../components/ui/Badges';
+import { buttonClass } from '../components/ui/Button';
+import { EmptyState, ErrorState, LoadingCard } from '../components/ui/Feedback';
+import { Card, PageHeader, Pagination, SectionHeading } from '../components/ui/Layout';
+import { MonoValue } from '../components/ui/Primitives';
+import { useAuth } from '../features/auth/AuthProvider';
+import { api } from '../lib/api';
+import { formatDateTime, shortHash } from '../lib/format';
+import { queryKeys } from '../lib/queryKeys';
+import { usePageTitle } from '../lib/usePageTitle';
+
+export function ReportsPage() {
+  usePageTitle('Accountability reports');
+  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = Number(searchParams.get('page') ?? 1) || 1;
+
+  const reportsQuery = useQuery({
+    queryKey: queryKeys.reports({ page }),
+    queryFn: () => api.getPage<ReportSummaryView>('/reports', { page, pageSize: 12 }),
+  });
+
+  const reports = reportsQuery.data?.data ?? [];
+  const meta = reportsQuery.data?.meta ?? {};
+
+  return (
+    <div className="page-stack">
+      <PageHeader
+        eyebrow="Point-in-time accountability"
+        title="Accountability reports"
+        description="A report freezes the records visible to its generator at one moment and stores a SHA-256 checksum. It is a snapshot for inspection, not a claim that the underlying work was completed or paid for."
+        actions={
+          <Link to="/projects" className={buttonClass('secondary')}>
+            <FolderKanban size={16} aria-hidden="true" /> Open a project to generate one
+          </Link>
+        }
+      />
+
+      <div className="metric-strip">
+        <div className="metric-strip__lead">
+          <span>Reports available in your scope</span>
+          <strong>{Number(meta.total ?? reports.length)}</strong>
+        </div>
+        <div>
+          <span>Your role</span>
+          <strong>{user?.role === 'ADMIN' ? 'Platform administrator' : user?.role === 'REVIEWER' ? 'Independent reviewer' : 'Project owner'}</strong>
+        </div>
+        <div>
+          <span>Shareable public link</span>
+          <strong>No</strong>
+        </div>
+        <div className="metric-strip__note">
+          <LockKeyhole size={15} aria-hidden="true" />
+          <span>Reports are restricted to project participants. Public readers use project records and verification instead.</span>
+        </div>
+      </div>
+
+      <Card>
+        <SectionHeading
+          title="Generated reports"
+          description="Reports are immutable snapshots. Generating a new report does not alter or replace an earlier one."
+          action={<span className="scope-note">Newest first</span>}
+        />
+        {reportsQuery.isLoading ? (
+          <LoadingCard label="Loading accountability reports…" />
+        ) : reportsQuery.isError ? (
+          <ErrorState
+            error={reportsQuery.error}
+            title="Reports could not be loaded"
+            action={
+              <button type="button" className={buttonClass('secondary', 'sm')} onClick={() => void reportsQuery.refetch()}>
+                Try again
+              </button>
+            }
+          />
+        ) : reports.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No accountability reports yet"
+            description={
+              user?.role === 'PROJECT_OWNER'
+                ? 'Open an owned project and choose “Report” to generate the first point-in-time accountability snapshot.'
+                : 'Reports generated for projects in your scope will appear here.'
+            }
+            action={<Link to="/projects" className={buttonClass('secondary', 'sm')}>Browse projects</Link>}
+          />
+        ) : (
+          <div className="report-list">
+            {reports.map((report) => (
+              <article className="report-row" key={report.id}>
+                <span className="report-row__icon" aria-hidden="true">
+                  {report.format === 'JSON' ? <FileJson size={21} /> : <Printer size={21} />}
+                </span>
+                <div className="report-row__body">
+                  <div className="badge-row">
+                    <ToneBadge tone="neutral">{report.format === 'JSON' ? 'Structured snapshot' : 'Print-ready'}</ToneBadge>
+                    <span className="scope-note">{formatDateTime(report.createdAt)}</span>
+                  </div>
+                  <h3>
+                    <Link to={`/reports/${report.id}`}>{report.title}</Link>
+                  </h3>
+                  <p>
+                    Generated by {report.generatedByName ?? 'a removed account'} ·{' '}
+                    <Link to={`/projects/${report.projectId}`} className="text-link">Open project record</Link>
+                  </p>
+                  <div className="report-row__checksum">
+                    <span>Snapshot checksum</span>
+                    <MonoValue value={report.checksum} display={shortHash(report.checksum, 18, 10)} />
+                  </div>
+                </div>
+                <Link to={`/reports/${report.id}`} className={buttonClass('secondary', 'sm')}>
+                  Open report <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              </article>
+            ))}
+          </div>
+        )}
+        <Pagination
+          page={Number(meta.page ?? page)}
+          totalPages={Number(meta.totalPages ?? 1)}
+          total={Number(meta.total ?? reports.length)}
+          onChange={(next) => {
+            const params = new URLSearchParams(searchParams);
+            if (next <= 1) params.delete('page');
+            else params.set('page', String(next));
+            setSearchParams(params);
+          }}
+          noun="reports"
+        />
+      </Card>
+
+      <div className="card-grid card-grid--three">
+        <Card>
+          <SectionHeading title="Immutability" />
+          <p>
+            The stored snapshot is not edited when records change later. A newer report captures the newer state, while the
+            old checksum continues to validate the old snapshot.
+          </p>
+        </Card>
+        <Card>
+          <SectionHeading title="Checksum scope" />
+          <p>
+            The SHA-256 checksum covers the canonical snapshot JSON. It confirms internal consistency of the stored report;
+            it does not make the report independently true.
+          </p>
+        </Card>
+        <Card>
+          <SectionHeading title="Export and print" />
+          <p>
+            Each report can be exported as JSON or printed from the browser. Browser print dialogs can usually save a PDF,
+            but the platform does not claim a verified PDF rendering. <CalendarClock size={14} aria-hidden="true" /> Reports
+            are not schedules or deadlines.
+          </p>
+        </Card>
+      </div>
+
+      <p className="muted-note">
+        <Download size={14} aria-hidden="true" /> Approved expenditure claims in a report are independent review outcomes,
+        not confirmation that money was paid.
+      </p>
+    </div>
+  );
+}

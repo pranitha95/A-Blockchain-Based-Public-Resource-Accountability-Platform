@@ -1,0 +1,41 @@
+{
+  "name": "proof-of-impact",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Proof of Impact — a blockchain-based public resource accountability platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "contracts"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c cyan,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @poi/api",
+    "dev:web": "npm run dev -w @poi/web",
+    "dev:db": "npm run dev:db -w @poi/api",
+    "db:migrate": "npm run db:migrate -w @poi/api",
+    "db:seed": "npm run db:seed -w @poi/api",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "create-admin": "npm run create-admin -w @poi/api",
+    "build": "npm run build -w @poi/api && npm run build -w @poi/web",
+    "typecheck": "npm run typecheck -w @poi/shared && npm run typecheck -w @poi/api && npm run typecheck -w @poi/web",
+    "test": "npm run test -w @poi/shared && npm run test -w @poi/contracts && npm run test -w @poi/api && npm run test -w @poi/web",
+    "test:api": "npm run test -w @poi/api",
+    "test:web": "npm run test -w @poi/web",
+    "test:contracts": "npm run test -w @poi/contracts",
+    "compile:contracts": "npm run compile -w @poi/contracts",
+    "export:abi": "npm run export-abi -w @poi/contracts",
+    "start": "npm run start -w @poi/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "@embedded-postgres/windows-x64@17.10.0-beta.17": true,
+    "esbuild@0.27.7": true,
+    "esbuild@0.28.2": true
+  }
+}
